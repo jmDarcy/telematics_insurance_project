@@ -1,0 +1,3 @@
+statsmodels is not installed; trained sklearn.linear_model.PoissonRegressor on claim frequency with exposure_km as sample_weight.
+intercept=-3.9642357053226336
+coefficients={'speeding_ratio': np.float64(1.0605755894906441), 'hard_braking_count_per_100km': np.float64(0.008673115566415842), 'harsh_acceleration_count_per_100km': np.float64(0.0056476225341995845), 'night_event_ratio': np.float64(0.9652447617386383), 'bad_weather_event_ratio': np.float64(-0.25270991966130324), 'phone_usage_count': np.float64(-0.15931899635964047)}

@@ -1,0 +1,7 @@
+{
+  "mae": 0.3251159795954212,
+  "rmse": 0.9022465388481112,
+  "mean_claim_count": 0.296,
+  "mean_predicted_claim_count": 0.29713335736771823,
+  "poisson_note": "If residual variance materially exceeds the mean, consider Negative Binomial or Tweedie."
+}
