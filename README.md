@@ -2,9 +2,20 @@
 
 Projekt demonstruje architekture usage-based insurance / pay-how-you-drive z Kafka, Spark Structured Streaming, Pythonem i modelem GLM. Dane sa syntetyczne i sluza do pokazania przeplywu real-time analytics, a nie do prawdziwej taryfikacji.
 
+Projekt zawiera tez rozszerzenie `real_time_decision_extension`, ktore dodaje realna decyzje biznesowa podejmowana w czasie rzeczywistym: ostrzezenie kierowcy, sprawdzenie statusu po potencjalnie groznym zdarzeniu albo przyznanie punktow za bezpieczna jazde. To rozszerzenie nie zmienia skladki po pojedynczym evencie; jest osobna warstwa operacyjna.
+
 ## Cel biznesowy
 
 System generuje zdarzenia telematyczne kierowcow, wykrywa ryzykowne zachowania, agreguje cechy w oknach czasowych, trenuje interpretowalny Poisson GLM i okresowo aktualizuje demonstracyjna skladke techniczna.
+
+W rozszerzeniu real-time decisioning system moze rowniez podjac natychmiastowa decyzje operacyjna:
+
+```text
+surowe zdarzenia telematyczne
+-> flagi ryzyka i sliding window 5 minut
+-> decyzja: ostrzec, sprawdzic status, nagrodzic albo nie robic nic
+-> Kafka topic driver_interventions
+```
 
 Poprawna logika projektu:
 
@@ -29,6 +40,12 @@ telematics_insurance_project/
 |-- train_glm.py
 |-- score_premiums.py
 |-- app.py
+|-- real_time_decision_extension/
+|   |-- realtime_decision_engine.py
+|   |-- intervention_consumer.py
+|   |-- offline_intervention_demo.py
+|   |-- create_extension_topics.sh
+|   `-- README_extension.md
 |-- notebooks/
 |   `-- 01_telematics_project.ipynb
 |-- data/
@@ -59,9 +76,11 @@ kafka-topics.sh --create --if-not-exists --topic telematics_raw --bootstrap-serv
 kafka-topics.sh --create --if-not-exists --topic telematics_alerts --bootstrap-server broker:9092
 kafka-topics.sh --create --if-not-exists --topic driver_features --bootstrap-server broker:9092
 kafka-topics.sh --create --if-not-exists --topic premium_updates --bootstrap-server broker:9092
+kafka-topics.sh --create --if-not-exists --topic driver_interventions --bootstrap-server broker:9092
 kafka-topics.sh --list --bootstrap-server broker:9092
 kafka-console-consumer.sh --bootstrap-server broker:9092 --topic telematics_raw --from-beginning --max-messages 5
 kafka-console-consumer.sh --bootstrap-server broker:9092 --topic telematics_alerts --from-beginning --max-messages 5
+kafka-console-consumer.sh --bootstrap-server broker:9092 --topic driver_interventions --from-beginning --max-messages 5
 ```
 
 Mozna tez uzyc:
@@ -137,6 +156,20 @@ python score_premiums.py --publish-kafka
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
+11. Opcjonalnie uruchom rozszerzenie real-time decisioning:
+
+```bash
+spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 real_time_decision_extension/realtime_decision_engine.py --show-console
+```
+
+Podglad decyzji:
+
+```bash
+python real_time_decision_extension/intervention_consumer.py --from-beginning
+```
+
+Szczegoly sa opisane w `real_time_decision_extension/README_extension.md`.
+
 ## Dane
 
 Producent wysyla JSON do `telematics_raw`. Przykladowe pola:
@@ -175,6 +208,16 @@ Profile `safe`, `average`, `aggressive`, `night_driver`, `urban_driver` zmieniaj
 - liczy tumbling window 1 minuta i sliding window 5 minut / krok 1 minuta,
 - uzywa watermarka 30 sekund,
 - zapisuje historyczne cechy do `data/historical_features/tumbling_1m`.
+
+`real_time_decision_extension/realtime_decision_engine.py`:
+
+- czyta ten sam topic `telematics_raw`,
+- tworzy flagi ryzyka dla pojedynczego eventu,
+- liczy aktywne sliding window 5 minut / krok 1 minuta,
+- publikuje decyzje operacyjne do `driver_interventions`,
+- rozroznia m.in. `SEND_SAFETY_NUDGE`, `CHECK_DRIVER_STATUS`, `GRANT_SAFE_DRIVING_POINTS`.
+
+Ta czesc jest wlasciwym uzasadnieniem real-time analytics w projekcie: system podejmuje decyzje podczas aktywnej jazdy, zamiast tylko zbierac dane pod pozniejszy scoring.
 
 ## Model GLM
 
@@ -238,3 +281,8 @@ Notebook `notebooks/01_telematics_project.ipynb` zawiera komorki do wykresow:
 5. Poisson moze byc niewystarczajacy przy nadmiernej dyspersji.
 6. Telematyka rodzi problemy prywatnosci i wymaga silnej kontroli zgody, retencji i celu przetwarzania danych.
 7. Spark/Kafka maja sens przy danych strumieniowych lub duzych wolumenach. W malej probce sa demonstracja architektury, a nie koniecznoscia obliczeniowa.
+8. Rozszerzenie real-time decisioning uzywa prostych regul demonstracyjnych. W realnym systemie potrzebne bylyby deduplikacja komunikatow, cooldown, testy progow, audyt decyzji i integracja z aplikacja mobilna lub CRM.
+
+## Zrodla kursowe i dokumentacyjne
+
+Projekt jest zgodny z materialami RTA dotyczacymi Kafka, Spark Structured Streaming, watermarkow, okien, tematu Kafka i batch vs stream. Dodatkowo implementacja opiera sie na oficjalnym wzorcu Spark Structured Streaming + Kafka: odczyt przez `readStream.format("kafka")`, parsowanie `value`, checkpointy i zapis strumieniowy.
