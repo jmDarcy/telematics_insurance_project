@@ -282,7 +282,3 @@ Notebook `notebooks/01_telematics_project.ipynb` zawiera komorki do wykresow:
 6. Telematyka rodzi problemy prywatnosci i wymaga silnej kontroli zgody, retencji i celu przetwarzania danych.
 7. Spark/Kafka maja sens przy danych strumieniowych lub duzych wolumenach. W malej probce sa demonstracja architektury, a nie koniecznoscia obliczeniowa.
 8. Rozszerzenie real-time decisioning uzywa prostych regul demonstracyjnych. W realnym systemie potrzebne bylyby deduplikacja komunikatow, cooldown, testy progow, audyt decyzji i integracja z aplikacja mobilna lub CRM.
-
-## Zrodla kursowe i dokumentacyjne
-
-Projekt jest zgodny z materialami RTA dotyczacymi Kafka, Spark Structured Streaming, watermarkow, okien, tematu Kafka i batch vs stream. Dodatkowo implementacja opiera sie na oficjalnym wzorcu Spark Structured Streaming + Kafka: odczyt przez `readStream.format("kafka")`, parsowanie `value`, checkpointy i zapis strumieniowy.
