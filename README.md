@@ -260,15 +260,6 @@ Premium history is stored in:
 data/premium_history/premium_history.csv
 ```
 
-## Naming Notes
-
-The repository uses descriptive English names for folders and externally visible entry points. The main cleanup applied here is:
-
-- `real_time_decision_extension/` -> `real-time-decision-extension/`,
-- `README_extension.md` -> `real-time-decision-extension/README.md`,
-- `create_extension_topics.sh` -> `real-time-decision-extension/create_topics.sh`,
-- `app.py` -> `premium_api.py`.
-
 ## Limitations
 
 - The data is synthetic and must not be used for real insurance pricing.
