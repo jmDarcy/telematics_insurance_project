@@ -5,7 +5,7 @@ It simulates a stream of telematics events and applies the same decision ideas
 in small in-memory rolling windows.
 
 Run:
-    python real_time_decision_extension/offline_intervention_demo.py
+    python real-time-decision-extension/offline_intervention_demo.py
 """
 
 from __future__ import annotations
@@ -237,7 +237,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--events", type=int, default=250)
     parser.add_argument("--window-events", type=int, default=12)
     parser.add_argument("--seed", type=int, default=2026)
-    parser.add_argument("--output", default="data/realtime_decision_extension/offline_interventions.jsonl")
+    parser.add_argument("--output", default="data/real-time-decision-extension/offline_interventions.jsonl")
     return parser.parse_args()
 
 

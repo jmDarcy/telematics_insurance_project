@@ -1,37 +1,14 @@
-# Telematics Insurance RTA Project
+# Telematics Insurance Real-Time Analytics Project
 
-Projekt demonstruje architekture usage-based insurance / pay-how-you-drive z Kafka, Spark Structured Streaming, Pythonem i modelem GLM. Dane sa syntetyczne i sluza do pokazania przeplywu real-time analytics, a nie do prawdziwej taryfikacji.
+This repository contains a course-oriented real-time analytics project for telematics-based motor insurance. It demonstrates how synthetic driving events can be produced, streamed through Kafka, processed with Spark Structured Streaming, converted into driver-level features, scored with an interpretable GLM, and used for both periodic premium scoring and real-time operational decisions.
 
-Projekt zawiera tez rozszerzenie `real_time_decision_extension`, ktore dodaje realna decyzje biznesowa podejmowana w czasie rzeczywistym: ostrzezenie kierowcy, sprawdzenie statusu po potencjalnie groznym zdarzeniu albo przyznanie punktow za bezpieczna jazde. To rozszerzenie nie zmienia skladki po pojedynczym evencie; jest osobna warstwa operacyjna.
-
-## Cel biznesowy
-
-System generuje zdarzenia telematyczne kierowcow, wykrywa ryzykowne zachowania, agreguje cechy w oknach czasowych, trenuje interpretowalny Poisson GLM i okresowo aktualizuje demonstracyjna skladke techniczna.
-
-W rozszerzeniu real-time decisioning system moze rowniez podjac natychmiastowa decyzje operacyjna:
+The project was developed in the context of a Real-Time Analytics course workspace:
 
 ```text
-surowe zdarzenia telematyczne
--> flagi ryzyka i sliding window 5 minut
--> decyzja: ostrzec, sprawdzic status, nagrodzic albo nie robic nic
--> Kafka topic driver_interventions
+C:\Users\jakob\OneDrive\Pulpit\A_MAGISTERKA SGH\Analiza_danych_w_czasie_rzeczywistym\Project
 ```
 
-Poprawna logika projektu:
-
-```text
-surowe zdarzenia telematyczne
--> reguly i flagi ryzyka
--> agregaty w oknach czasowych
--> tabela cech kierowcy
--> batchowe trenowanie GLM
--> scoring kierowcy
--> okresowa aktualizacja technicznej skladki
-```
-
-Pojedyncze zdarzenie nie zmienia skladki mechanicznie. Zdarzenia sa tylko sygnalem do agregatow i modelu.
-
-## Struktura
+## Repository Structure
 
 ```text
 telematics_insurance_project/
@@ -39,37 +16,80 @@ telematics_insurance_project/
 |-- spark_streaming_features.py
 |-- train_glm.py
 |-- score_premiums.py
-|-- app.py
-|-- real_time_decision_extension/
-|   |-- realtime_decision_engine.py
+|-- premium_api.py
+|-- real-time-decision-extension/
+|   |-- real_time_decision_engine.py
 |   |-- intervention_consumer.py
 |   |-- offline_intervention_demo.py
-|   |-- create_extension_topics.sh
-|   `-- README_extension.md
+|   |-- create_topics.sh
+|   `-- README.md
 |-- notebooks/
 |   `-- 01_telematics_project.ipynb
 |-- data/
-|   |-- historical_features/
 |   |-- model_outputs/
 |   |-- premium_history/
+|   |-- historical_features/
 |   `-- checkpoints/
 |-- models/
 |-- scripts/
 |   `-- create_topics.sh
-|-- README.md
-`-- requirements.txt
+|-- requirements.txt
+|-- .gitignore
+`-- README.md
 ```
 
-## Technologie
+## Component Overview
 
-- Python, pandas, numpy
-- Apache Kafka przez `kafka-python`
-- PySpark / Spark Structured Streaming
-- Spark-Kafka connector
-- statsmodels Poisson GLM z offsetem ekspozycji
-- opcjonalnie FastAPI do serwowania ostatniej skladki
+| Path | Purpose |
+| --- | --- |
+| `producer_telematics.py` | Generates synthetic telematics events and publishes them to Kafka topic `telematics_raw`. |
+| `spark_streaming_features.py` | Reads raw Kafka events, parses JSON, builds risk flags, emits alerts, and writes windowed driver features. |
+| `train_glm.py` | Trains a Poisson GLM on historical driver-window aggregates. |
+| `score_premiums.py` | Applies the trained GLM to update technical premium estimates with a capped change rule. |
+| `premium_api.py` | Minimal FastAPI service exposing the latest premium for a selected driver. |
+| `real-time-decision-extension/` | Real-time operational decision layer for safety nudges, assistance checks, and safe-driving rewards. |
+| `notebooks/` | Notebook walkthrough for the end-to-end course project. |
+| `data/model_outputs/` | Model summaries, coefficients, metrics, predictions, and training dataset exports. |
+| `data/premium_history/` | Stored history of technical premium updates. |
+| `models/` | Serialized GLM model artifact. |
+| `scripts/create_topics.sh` | Kafka topic creation helper for the main pipeline and decision extension. |
 
-## Kafka topics
+## Business Context
+
+The base pipeline supports usage-based insurance and pay-how-you-drive analysis. It does not mechanically change the insurance premium after a single driving event. Instead, events are aggregated into driver features and used for periodic risk and premium scoring.
+
+The real-time decision extension adds an operational decision layer. It can react while a trip is active by recommending:
+
+- `SEND_SAFETY_NUDGE` - warn the driver when short-window risk is elevated,
+- `CHECK_DRIVER_STATUS` - ask if the driver is safe after a potentially severe event,
+- `GRANT_SAFE_DRIVING_POINTS` - reward calm driving in a recent time window.
+
+This separates actuarial pricing from real-time service actions. The premium remains a periodic model output, while real-time analytics creates immediate customer-care and risk-prevention decisions.
+
+## Processing Flow
+
+```text
+synthetic telematics event
+-> Kafka topic telematics_raw
+-> Spark Structured Streaming parsing and risk flags
+-> Kafka topic telematics_alerts
+-> tumbling/sliding window driver features
+-> historical feature store
+-> batch GLM training
+-> periodic premium scoring
+```
+
+Optional real-time decision flow:
+
+```text
+synthetic telematics event
+-> Kafka topic telematics_raw
+-> event and sliding-window risk rules
+-> Kafka topic driver_interventions
+-> safety nudge, assistance check, or safe-driving reward
+```
+
+## Kafka Topics
 
 ```bash
 kafka-topics.sh --create --if-not-exists --topic telematics_raw --bootstrap-server broker:9092
@@ -77,102 +97,105 @@ kafka-topics.sh --create --if-not-exists --topic telematics_alerts --bootstrap-s
 kafka-topics.sh --create --if-not-exists --topic driver_features --bootstrap-server broker:9092
 kafka-topics.sh --create --if-not-exists --topic premium_updates --bootstrap-server broker:9092
 kafka-topics.sh --create --if-not-exists --topic driver_interventions --bootstrap-server broker:9092
-kafka-topics.sh --list --bootstrap-server broker:9092
-kafka-console-consumer.sh --bootstrap-server broker:9092 --topic telematics_raw --from-beginning --max-messages 5
-kafka-console-consumer.sh --bootstrap-server broker:9092 --topic telematics_alerts --from-beginning --max-messages 5
-kafka-console-consumer.sh --bootstrap-server broker:9092 --topic driver_interventions --from-beginning --max-messages 5
 ```
 
-Mozna tez uzyc:
+You can create all topics with:
 
 ```bash
 bash scripts/create_topics.sh
 ```
 
-## Uruchomienie
+## Prerequisites
 
-1. Uruchom srodowisko Docker/JupyterLab z Kafka dostepna pod `broker:9092`.
-2. Zainstaluj zaleznosci:
+- Python 3.10 or newer,
+- Kafka broker available as `broker:9092`,
+- Spark / PySpark with the Spark-Kafka connector,
+- Python packages from `requirements.txt`,
+- optional JupyterLab for notebook execution.
+
+Install Python dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Utworz tematy Kafka:
+Spark submit examples:
+
+```bash
+# Spark 3.5 / Scala 2.12
+spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 spark_streaming_features.py
+
+# Spark 4.0 preview / Scala 2.13
+spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.0-preview2 spark_streaming_features.py
+```
+
+## Suggested Run Path
+
+1. Create Kafka topics:
 
 ```bash
 bash scripts/create_topics.sh
 ```
 
-4. Uruchom producenta:
+2. Start the synthetic event producer:
 
 ```bash
 python producer_telematics.py --drivers 50 --events-per-second 10 --duration-seconds 300 --seed 2026
 ```
 
-5. Uruchom Spark Structured Streaming.
-
-Dla Spark 3.5 / Scala 2.12:
+3. Start the Spark streaming feature pipeline:
 
 ```bash
 spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 spark_streaming_features.py
 ```
 
-Dla Spark 4.0 preview / Scala 2.13:
-
-```bash
-spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.0-preview2 spark_streaming_features.py
-```
-
-6. Obserwuj alerty:
+4. Preview risk alerts:
 
 ```bash
 kafka-console-consumer.sh --bootstrap-server broker:9092 --topic telematics_alerts --from-beginning
 ```
 
-7. Po zebraniu agregatow wytrenuj GLM:
+5. Train the GLM:
 
 ```bash
 python train_glm.py
 ```
 
-Jesli dane parquet ze streamingu jeszcze nie istnieja, skrypt wygeneruje demonstracyjne historyczne agregaty syntetyczne.
+If streaming parquet features are not available, the training script generates a synthetic historical training dataset.
 
-8. Policz skladki:
+6. Score technical premiums:
 
 ```bash
 python score_premiums.py
 ```
 
-9. Opcjonalnie opublikuj aktualizacje skladek do Kafka:
+7. Optionally publish premium updates to Kafka:
 
 ```bash
 python score_premiums.py --publish-kafka
 ```
 
-10. Opcjonalnie uruchom API:
+8. Optionally start the premium API:
 
 ```bash
-uvicorn app:app --host 0.0.0.0 --port 8000
+uvicorn premium_api:app --host 0.0.0.0 --port 8000
 ```
 
-11. Opcjonalnie uruchom rozszerzenie real-time decisioning:
+9. Optionally run the real-time decision extension:
 
 ```bash
-spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 real_time_decision_extension/realtime_decision_engine.py --show-console
+spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 real-time-decision-extension/real_time_decision_engine.py --show-console
 ```
 
-Podglad decyzji:
+10. Preview real-time intervention decisions:
 
 ```bash
-python real_time_decision_extension/intervention_consumer.py --from-beginning
+python real-time-decision-extension/intervention_consumer.py --from-beginning
 ```
 
-Szczegoly sa opisane w `real_time_decision_extension/README_extension.md`.
+## Data Schema
 
-## Dane
-
-Producent wysyla JSON do `telematics_raw`. Przykladowe pola:
+The producer publishes JSON events to `telematics_raw`. Example:
 
 ```json
 {
@@ -194,34 +217,11 @@ Producent wysyla JSON do `telematics_raw`. Przykladowe pola:
 }
 ```
 
-Profile `safe`, `average`, `aggressive`, `night_driver`, `urban_driver` zmieniaja rozklady predkosci, hamowania, przyspieszenia, jazdy noca i uzycia telefonu.
+Synthetic profiles include `safe`, `average`, `aggressive`, `night_driver`, and `urban_driver`. These profiles affect speed, acceleration, braking, night driving, road type, and phone usage distributions.
 
-## Streaming
+## GLM Model
 
-`spark_streaming_features.py`:
-
-- czyta `telematics_raw`,
-- parsuje JSON przez jawny schema,
-- stabilnie konwertuje timestamp ISO z koncowka `Z`,
-- tworzy flagi: `is_speeding`, `is_hard_braking`, `is_harsh_acceleration`, `is_sharp_cornering`, `is_night_risk`, `is_bad_weather`, `is_phone_usage`, `risk_event`,
-- wysyla alerty do `telematics_alerts`,
-- liczy tumbling window 1 minuta i sliding window 5 minut / krok 1 minuta,
-- uzywa watermarka 30 sekund,
-- zapisuje historyczne cechy do `data/historical_features/tumbling_1m`.
-
-`real_time_decision_extension/realtime_decision_engine.py`:
-
-- czyta ten sam topic `telematics_raw`,
-- tworzy flagi ryzyka dla pojedynczego eventu,
-- liczy aktywne sliding window 5 minut / krok 1 minuta,
-- publikuje decyzje operacyjne do `driver_interventions`,
-- rozroznia m.in. `SEND_SAFETY_NUDGE`, `CHECK_DRIVER_STATUS`, `GRANT_SAFE_DRIVING_POINTS`.
-
-Ta czesc jest wlasciwym uzasadnieniem real-time analytics w projekcie: system podejmuje decyzje podczas aktywnej jazdy, zamiast tylko zbierac dane pod pozniejszy scoring.
-
-## Model GLM
-
-Model:
+The premium scoring model is a Poisson GLM:
 
 ```text
 claim_count ~ speeding_ratio
@@ -233,52 +233,49 @@ claim_count ~ speeding_ratio
             + offset(log(exposure_km))
 ```
 
-Preferowany jest Poisson GLM `statsmodels` z linkiem logarytmicznym. Offset `log(exposure_km)` oznacza, ze modeluje sie czestosc szkod wzgledem ekspozycji, a nie sama liczbe szkod bez kontekstu przejechanych kilometrow. Jezeli w lokalnym srodowisku nie ma `statsmodels`, skrypt uzywa fallbacku `sklearn.linear_model.PoissonRegressor`, estymujac czestosc szkody i wazac obserwacje przez `exposure_km`.
+The offset `log(exposure_km)` means the model estimates claim frequency relative to driven distance rather than treating raw claim counts as directly comparable across different exposure levels.
 
-Wyniki zapisywane sa do `data/model_outputs/`:
+Model outputs are stored in `data/model_outputs/`:
 
-- `training_dataset.csv`
-- `glm_coefficients.csv`
-- `glm_test_predictions.csv`
-- `glm_metrics.json`
-- `glm_summary.txt`
+- `training_dataset.csv`,
+- `glm_coefficients.csv`,
+- `glm_test_predictions.csv`,
+- `glm_metrics.json`,
+- `glm_summary.txt`.
 
-Przy nadmiernej dyspersji, gdy wariancja liczby szkod jest istotnie wieksza niz srednia, Poisson moze byc zbyt prosty. Wtedy nalezy rozwazyc Negative Binomial albo Tweedie.
+## Premium Scoring
 
-## Scoring i skladka
-
-Scoring wylicza:
+The scoring script computes:
 
 ```text
 risk_multiplier = predicted_frequency / average_predicted_frequency
 technical_premium = base_premium * risk_multiplier
 ```
 
-Domyslna skladka bazowa to 1000 PLN. Jedna aktualizacja skladki jest ograniczona limitem +/-10%, aby uniknac skokow po pojedynczej paczce danych. Historia trafia do:
+The default base premium is 1000 PLN. Each update is capped at +/-10% relative to the previous premium estimate to avoid excessive volatility after a small batch of new data.
+
+Premium history is stored in:
 
 ```text
 data/premium_history/premium_history.csv
 ```
 
-## Wizualizacje
+## Naming Notes
 
-Notebook `notebooks/01_telematics_project.ipynb` zawiera komorki do wykresow:
+The repository uses descriptive English names for folders and externally visible entry points. The main cleanup applied here is:
 
-1. liczba eventow ryzyka w czasie,
-2. przekroczenia predkosci wedlug kierowcy,
-3. risk score wedlug kierowcy,
-4. predicted claim frequency,
-5. techniczna skladka wedlug kierowcy,
-6. zmiana skladki wybranych kierowcow w czasie,
-7. porownanie profili safe / average / aggressive.
+- `real_time_decision_extension/` -> `real-time-decision-extension/`,
+- `README_extension.md` -> `real-time-decision-extension/README.md`,
+- `create_extension_topics.sh` -> `real-time-decision-extension/create_topics.sh`,
+- `app.py` -> `premium_api.py`.
 
-## Krytyczna ocena i ograniczenia
+## Limitations
 
-1. Dane sa syntetyczne, wiec nie wolno wyciagac realnych wnioskow taryfowych.
-2. Prawdziwa skladka zalezy od wielu zmiennych poza telematyka.
-3. Pojedyncze zdarzenia nie powinny mechanicznie zmieniac skladki.
-4. GLM jest interpretowalny, ale moze byc zbyt prosty dla zlozonych relacji telematycznych.
-5. Poisson moze byc niewystarczajacy przy nadmiernej dyspersji.
-6. Telematyka rodzi problemy prywatnosci i wymaga silnej kontroli zgody, retencji i celu przetwarzania danych.
-7. Spark/Kafka maja sens przy danych strumieniowych lub duzych wolumenach. W malej probce sa demonstracja architektury, a nie koniecznoscia obliczeniowa.
-8. Rozszerzenie real-time decisioning uzywa prostych regul demonstracyjnych. W realnym systemie potrzebne bylyby deduplikacja komunikatow, cooldown, testy progow, audyt decyzji i integracja z aplikacja mobilna lub CRM.
+- The data is synthetic and must not be used for real insurance pricing.
+- The GLM is intentionally simple and educational.
+- A real insurance premium depends on many non-telematics variables.
+- A single event should not mechanically change the premium.
+- Poisson GLM may be insufficient under material overdispersion; Negative Binomial or Tweedie models may be more appropriate.
+- Telematics data requires explicit consent, privacy controls, retention policies, and access control.
+- Kafka and Spark are justified by streaming architecture and scale; in this small repository they are primarily educational.
+- The real-time decision extension uses demonstrative rules. A production version would need cooldowns, deduplication, monitoring, auditability, and integration with a mobile app, CRM, or assistance workflow.
